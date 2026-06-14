@@ -16,8 +16,8 @@ h3 {
 }
 
 .assumption-card {
-  margin-top: 10px;
-  padding: 12px 16px;
+  margin-top: 6px;
+  padding: 9px 12px;
   border-left: 4px solid #00bcd4;
   border-radius: 6px;
   background: #f5f8fa;
@@ -26,7 +26,34 @@ h3 {
 }
 
 .dataTables_wrapper {
+  width: 100%;
   padding: 8px 12px 16px;
+}
+
+.dataTables_wrapper table.dataTable {
+  width: 100% !important;
+}
+
+.dataTables_wrapper table.dataTable thead th {
+  box-sizing: border-box;
+  padding: 9px 18px 9px 7px !important;
+  text-align: center;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+  vertical-align: middle;
+}
+
+.dataTables_wrapper table.dataTable tbody td {
+  box-sizing: border-box;
+  padding: 8px 7px !important;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+  padding-top: 8px;
 }
 
 table.dataTable tbody tr.selected,
@@ -37,4 +64,47 @@ table.dataTable tbody tr.selected:hover {
 
 .section.sidebar {
   background-color: #f7f9fb;
+}
+
+@media (max-width: 1400px) {
+  .view-controls .form-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px !important;
+  }
+
+  .view-controls .control-label {
+    flex: 0 0 105px;
+    margin: 0;
+    font-size: 12px;
+  }
+
+  .view-controls .shiny-options-group {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+
+  .view-controls .radio-inline {
+    padding-left: 17px;
+    font-size: 12px;
+  }
+
+  .view-controls .assumption-card {
+    margin-top: 3px;
+    padding: 6px 8px;
+    font-size: 11px;
+    line-height: 1.25;
+  }
+
+  .dataTables_wrapper table.dataTable {
+    font-size: 12px;
+  }
+
+  .dataTables_wrapper table.dataTable thead th,
+  .dataTables_wrapper table.dataTable tbody td {
+    padding-left: 5px !important;
+    padding-right: 5px !important;
+  }
 }

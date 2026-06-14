@@ -5,7 +5,7 @@ output:
   flexdashboard::flex_dashboard:
     orientation: rows
     vertical_layout: fill
-    logo: www/logo.svg
+    logo: www/logo.png
     css: styles.css
 runtime: shiny
 ---
@@ -69,9 +69,9 @@ When $\gamma = 1$, the function transitions to $U(W) = \ln(W)$.
 * *$\gamma = 4$:* Lower capacity; wealth preservation is more important.
 * *$\gamma = 5-6$:* Fragile or near zero-loss situation.
 
-<div style="text-align: right; margin-bottom: 20px;">
-  <img src="www/PP_logo.png" alt="University Logo" style="max-width: 300px;">
-</div>
+```{r university_logo, echo=FALSE, out.width="300px", fig.align="right"}
+knitr::include_graphics("www/PP_logo.png")
+```
 
 Portfolio {icon="fa-chart-line"}
 =======================================================================
@@ -289,7 +289,7 @@ renderPlotly({
 Goal Planner {icon="fa-bullseye"}
 =======================================================================
 
-Row {data-height=170}
+Row {data-height=200}
 -----------------------------------------------------------------------
 
 ### *Planner Inputs* {data-width=750}
@@ -325,7 +325,7 @@ fluidRow(
     4,
     sliderInput(
       "goal_multiplier",
-      "Target purchasing power",
+      "Target purchasing power (goal)",
       min = 1,
       max = 10,
       value = 4,
@@ -340,34 +340,40 @@ fluidRow(
 ### *View & Meaning* {data-width=250}
 
 ```{r allocation_assumptions}
-radioButtons(
-  "distribution_scale",
-  "Wealth scale",
-  choices = c("Log" = "log", "Linear" = "linear"),
-  selected = "log",
-  inline = TRUE
-)
-
-radioButtons(
-  "distribution_range",
-  "Histogram range",
-  choices = c("Same scale" = "comparable", "Zoom selected" = "selected"),
-  selected = "comparable",
-  inline = TRUE
-)
-
 div(
-  class = "assumption-card",
-  strong("Wealth is inflation-adjusted."),
-  br(),
-  span("Same scale keeps every allocation directly comparable. Zoom selected reveals its distribution shape.")
+  class = "view-controls",
+  radioButtons(
+    "distribution_scale",
+    "Wealth scale",
+    choices = c("Log" = "log", "Linear" = "linear"),
+    selected = "log",
+    inline = TRUE
+  ),
+  radioButtons(
+    "distribution_range",
+    "Histogram range",
+    choices = c("Same scale" = "comparable", "Zoom selected" = "selected"),
+    selected = "comparable",
+    inline = TRUE
+  ),
+  div(
+    class = "assumption-card",
+    strong("Wealth is inflation-adjusted."),
+    br(),
+    renderText({
+      paste0(
+        "$100 is the starting value. Here, ", input$goal_multiplier,
+        "x means $", 100 * input$goal_multiplier, " of real wealth."
+      )
+    })
+  )
 )
 ```
 
 Row {data-height=430}
 -----------------------------------------------------------------------
 
-### *Probability of Reaching the Goal* {data-width=600}
+### *Probability of Reaching the Purchasing-Power Target* {data-width=600}
 
 ```{r goal_probability}
 renderPlotly({
@@ -375,6 +381,11 @@ renderPlotly({
   settings <- planner_settings()
   selected_stocks <- selected_allocation()
   selected_data <- summary_data %>% filter(Stocks == selected_stocks)
+  target_wealth <- 100 * settings$goal_multiplier
+  target_description <- paste0(
+    settings$goal_multiplier, "x starting purchasing power (",
+    dollar(target_wealth), ") after ", settings$time_horizon, " years"
+  )
   utility_best <- summary_data %>%
     slice_max(`Risk-adjusted utility`, n = 1, with_ties = FALSE)
   max_probability <- max(summary_data$`Goal probability`, na.rm = TRUE)
@@ -390,12 +401,12 @@ renderPlotly({
     y = ~`Goal probability`,
     type = "scatter",
     mode = "lines+markers",
-    name = "Chance of reaching goal",
+    name = "Target probability",
     line = list(color = color_wealth_strat1, width = 3),
     marker = list(size = 7, color = color_wealth_strat1),
     text = ~paste0(
       Stocks, "% stocks / ", Bonds, "% bonds<br>",
-      "Goal probability: ", percent(`Goal probability`, accuracy = 0.1), "<br>",
+      "Reach target: ", percent(`Goal probability`, accuracy = 0.1), "<br>",
       "Chance below start: ", percent(`Chance below start`, accuracy = 0.1), "<br>",
       "Median wealth: ", dollar(`Median wealth`)
     ),
@@ -413,7 +424,7 @@ renderPlotly({
       ),
       text = ~paste0(
         "Selected: ", Stocks, "% stocks<br>",
-        "Goal probability: ", percent(`Goal probability`, accuracy = 0.1)
+        "Reach target: ", percent(`Goal probability`, accuracy = 0.1)
       ),
       hoverinfo = "text"
     ) %>%
@@ -431,14 +442,32 @@ renderPlotly({
       hoverinfo = "text"
     ) %>%
     layout(
-      xaxis = list(title = "Stock allocation", ticksuffix = "%"),
+      annotations = list(list(
+        x = 0.5,
+        y = 1.10,
+        xref = "paper",
+        yref = "paper",
+        text = paste0("<b>Target:</b> ", target_description),
+        showarrow = FALSE,
+        font = list(size = 12, color = "#334e68")
+      )),
+      xaxis = list(
+        title = list(text = "Stock allocation", standoff = 10),
+        ticksuffix = "%"
+      ),
       yaxis = list(
-        title = "Probability of reaching goal",
+        title = "Probability of reaching target",
         tickformat = ".0%",
         range = c(0, probability_ceiling)
       ),
-      legend = list(orientation = "h", x = 0, y = -0.2),
-      margin = list(l = 90, r = 25, t = 25, b = 85),
+      legend = list(
+        orientation = "h",
+        x = 0.5,
+        xanchor = "center",
+        y = 1.03,
+        yanchor = "bottom"
+      ),
+      margin = list(l = 105, r = 25, t = 88, b = 60),
       hovermode = "closest"
     ) %>%
     config(displayModeBar = FALSE)
@@ -480,12 +509,29 @@ renderPlotly({
   display_distribution <- distribution %>%
     filter(Wealth >= display_lower, Wealth <= display_upper)
   target_in_view <- target_wealth >= display_lower && target_wealth <= display_upper
-  start_in_view <- 100 >= display_lower && 100 <= display_upper
   goal_note <- if (target_in_view) {
-    paste0("Goal ", dollar(target_wealth), " shown in orange")
+    paste0("Target ", dollar(target_wealth), " shown in orange")
   } else {
-    paste0("Goal ", dollar(target_wealth), " is outside the displayed central range")
+    paste0("Target ", dollar(target_wealth), " is outside the displayed central range")
   }
+
+  start_label <- "Starting wealth ($100)"
+  target_label <- paste0("Target (", dollar(target_wealth, accuracy = 1), ")")
+  median_label <- paste0("Median (", dollar(median_wealth, accuracy = 1), ")")
+  reference_levels <- c(start_label, target_label, median_label)
+  reference_lines <- tibble(
+    Wealth = c(100, target_wealth, median_wealth),
+    Reference = factor(reference_levels, levels = reference_levels)
+  ) %>%
+    filter(Wealth >= display_lower, Wealth <= display_upper)
+  reference_colors <- setNames(
+    c("#e74c3c", "#f39c12", color_wealth_strat2),
+    reference_levels
+  )
+  reference_linetypes <- setNames(
+    c("dashed", "dashed", "solid"),
+    reference_levels
+  )
 
   p <- ggplot(display_distribution, aes(x = Wealth)) +
     geom_histogram(
@@ -495,44 +541,34 @@ renderPlotly({
       alpha = 0.85
     ) +
     geom_vline(
-      xintercept = median_wealth,
-      color = color_wealth_strat2,
-      linewidth = 1
+      data = reference_lines,
+      aes(xintercept = Wealth, color = Reference, linetype = Reference),
+      linewidth = 0.9,
+      inherit.aes = FALSE
     ) +
+    scale_color_manual(values = reference_colors, drop = FALSE) +
+    scale_linetype_manual(values = reference_linetypes, drop = FALSE) +
     labs(
       title = paste0(stocks, "% Stocks / ", 100 - stocks, "% Bonds"),
       subtitle = paste0(
-        "Reach goal: ", percent(goal_probability, accuracy = 0.1),
+        "Reach target: ", percent(goal_probability, accuracy = 0.1),
         " | Below start: ", percent(loss_probability, accuracy = 0.1),
         "\n", goal_note
       ),
       x = "Terminal wealth (starting wealth = $100)",
       y = "Simulated outcomes",
+      color = NULL,
+      linetype = NULL,
       caption = range_caption
     ) +
     theme_minimal(base_size = 11) +
     theme(
       plot.title = element_text(face = "bold"),
-      plot.caption = element_text(size = 8, color = "#6b7280")
+      plot.caption = element_text(size = 8, color = "#6b7280"),
+      legend.position = "bottom",
+      legend.text = element_text(size = 8),
+      legend.margin = margin(t = 2, r = 0, b = 0, l = 0)
     )
-
-  if (start_in_view) {
-    p <- p + geom_vline(
-      xintercept = 100,
-      color = "#e74c3c",
-      linewidth = 0.8,
-      linetype = "dashed"
-    )
-  }
-
-  if (target_in_view) {
-    p <- p + geom_vline(
-      xintercept = target_wealth,
-      color = "#f39c12",
-      linewidth = 1,
-      linetype = "dashed"
-    )
-  }
 
   if (input$distribution_scale == "log") {
     p <- p + scale_x_log10(
@@ -548,8 +584,15 @@ renderPlotly({
 
   ggplotly(p, tooltip = c("x", "count")) %>%
     layout(
-      margin = list(l = 65, r = 20, t = 75, b = 60),
-      showlegend = FALSE
+      legend = list(
+        orientation = "h",
+        x = 0.5,
+        xanchor = "center",
+        y = 1.02,
+        yanchor = "bottom"
+      ),
+      margin = list(l = 65, r = 20, t = 95, b = 65),
+      showlegend = TRUE
     ) %>%
     config(displayModeBar = FALSE)
 })
@@ -568,6 +611,19 @@ renderDT({
   datatable(
     data,
     rownames = FALSE,
+    extensions = "Responsive",
+    width = "100%",
+    colnames = c(
+      "Stocks",
+      "Bonds",
+      "Reach target",
+      "Below start",
+      "Expected wealth",
+      "Median wealth",
+      "Downside (2.5%)",
+      "Upside (97.5%)",
+      "Risk-adjusted utility"
+    ),
     selection = list(mode = "single", selected = default_row),
     callback = JS(
       "table.on('click', 'tbody tr', function() {",
@@ -581,7 +637,15 @@ renderDT({
       pageLength = 11,
       lengthChange = FALSE,
       searching = FALSE,
-      scrollX = TRUE,
+      autoWidth = FALSE,
+      responsive = TRUE,
+      columnDefs = list(
+        list(className = "dt-center", targets = c(0, 1, 2, 3)),
+        list(className = "dt-right", targets = c(4, 5, 6, 7, 8)),
+        list(responsivePriority = 1, targets = c(0, 2)),
+        list(responsivePriority = 2, targets = c(1, 4, 5)),
+        list(responsivePriority = 3, targets = c(3, 6, 7, 8))
+      ),
       order = list(list(0, "asc"))
     ),
     class = "stripe hover compact"
