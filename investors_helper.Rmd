@@ -362,8 +362,8 @@ div(
     br(),
     renderText({
       paste0(
-        "$100 is the starting value. Here, ", input$goal_multiplier,
-        "x means $", 100 * input$goal_multiplier, " of real wealth."
+        "Terminal wealth is ending real purchasing power: $200 means 2x the $100 start. ",
+        "Current target: $", 100 * input$goal_multiplier, "."
       )
     })
   )
@@ -590,7 +590,36 @@ renderPlotly({
     )
   }
 
-  ggplotly(p, tooltip = c("x", "count")) %>%
+  terminal_plot <- ggplotly(p, tooltip = c("x", "count"))
+  bar_traces <- which(vapply(
+    terminal_plot$x$data,
+    function(trace) identical(trace$type, "bar"),
+    logical(1)
+  ))
+
+  for (trace_index in bar_traces) {
+    plotted_wealth <- as.numeric(terminal_plot$x$data[[trace_index]]$x)
+    actual_wealth <- if (input$distribution_scale == "log") {
+      10^plotted_wealth
+    } else {
+      plotted_wealth
+    }
+    outcome_count <- terminal_plot$x$data[[trace_index]]$y
+
+    terminal_plot$x$data[[trace_index]]$text <- ifelse(
+      is.finite(actual_wealth),
+      paste0(
+        "Terminal wealth: ", dollar(actual_wealth, accuracy = 1),
+        "<br>Multiple of start: ", sprintf("%.2fx", actual_wealth / 100),
+        "<br>Outcomes: ", outcome_count
+      ),
+      ""
+    )
+    terminal_plot$x$data[[trace_index]]$hoverinfo <- "text"
+    terminal_plot$x$data[[trace_index]]$hovertemplate <- NULL
+  }
+
+  terminal_plot %>%
     layout(
       legend = list(
         orientation = "h",
