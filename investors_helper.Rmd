@@ -382,9 +382,10 @@ renderPlotly({
   selected_stocks <- selected_allocation()
   selected_data <- summary_data %>% filter(Stocks == selected_stocks)
   target_wealth <- 100 * settings$goal_multiplier
-  target_description <- paste0(
-    settings$goal_multiplier, "x starting purchasing power (",
-    dollar(target_wealth), ") after ", settings$time_horizon, " years"
+  target_panel_text <- paste0(
+    "<b>Target</b><br>",
+    settings$goal_multiplier, "x starting purchasing power<br>",
+    dollar(target_wealth), " after ", settings$time_horizon, " years"
   )
   utility_best <- summary_data %>%
     slice_max(`Risk-adjusted utility`, n = 1, with_ties = FALSE)
@@ -443,13 +444,20 @@ renderPlotly({
     ) %>%
     layout(
       annotations = list(list(
-        x = 0.5,
-        y = 1.10,
+        x = 1.02,
+        y = 0.48,
         xref = "paper",
         yref = "paper",
-        text = paste0("<b>Target:</b> ", target_description),
+        text = target_panel_text,
         showarrow = FALSE,
-        font = list(size = 12, color = "#334e68")
+        xanchor = "left",
+        yanchor = "top",
+        align = "left",
+        bgcolor = "#f5f8fa",
+        bordercolor = "#d9e2ec",
+        borderwidth = 1,
+        borderpad = 8,
+        font = list(size = 11, color = "#334e68")
       )),
       xaxis = list(
         title = list(text = "Stock allocation", standoff = 10),
@@ -461,13 +469,13 @@ renderPlotly({
         range = c(0, probability_ceiling)
       ),
       legend = list(
-        orientation = "h",
-        x = 0.5,
-        xanchor = "center",
-        y = 1.03,
-        yanchor = "bottom"
+        orientation = "v",
+        x = 1.02,
+        xanchor = "left",
+        y = 0.98,
+        yanchor = "top"
       ),
-      margin = list(l = 105, r = 25, t = 88, b = 60),
+      margin = list(l = 105, r = 225, t = 45, b = 60),
       hovermode = "closest"
     ) %>%
     config(displayModeBar = FALSE)
