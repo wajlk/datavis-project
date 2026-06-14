@@ -1,0 +1,4 @@
+parameter,value,description
+mu_s,0.0052,Monthly real stock growth baseline
+sigma_s,0.055,Monthly stock volatility baseline
+mu_b,0.0015,Monthly real bond growth baseline

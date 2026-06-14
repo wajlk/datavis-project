@@ -1,0 +1,9 @@
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+rsconnect/
+*_cache/
+*_files/
+data/market_parameters.rds
+investors_helper.html

@@ -1,0 +1,733 @@
+---
+title: "Investors helper"
+author: "Adam Baranowski, Mateusz Wilk"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    logo: www/logo.svg
+    css: styles.css
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(ggplot2)
+library(plotly)
+library(tidyverse)
+library(ggsci)
+library(DT)
+
+source("bonds_vs_stocks.R")
+```
+
+About / Help {icon="fa-info-circle"}
+=======================================================================
+
+Column {style="overflow-y: auto;"}
+-----------------------------------------------------------------------
+
+### *Market Simulation Engine Guide*
+
+#### *Overview & Purpose*
+This dashboard is an educational simulator designed to illustrate the mechanics of long-term compounding, market volatility, and the psychological impact of risk. It is *not* a deterministic financial planning tool or formalized financial advice. By exploring different asset allocations and macroeconomic settings, you can build an intuition for how extreme market events shape terminal wealth.
+
+#### *How to Use the Dashboard*
+1. Navigate to the *Portfolio* tab.
+2. Adjust the *Global Parameters* to match your time horizon and risk profile.
+3. Configure *Strategy #1* and optionally compare it with *Strategy #2*.
+4. Open *Goal Planner*, choose a target purchasing-power multiple, and compare which allocations are most likely to reach it. Select a table row to inspect that allocation's outcomes.
+
+---
+
+#### *The Engine: Stocks vs. Bonds*
+For each strategy or allocation, the model evaluates 999 percentile-based market outcomes from 0.1% to 99.9%. Historical data supplies the growth, volatility, inflation, and bond-yield parameters; the displayed outcomes are deterministic distribution scenarios rather than replayed historical periods or random Monte Carlo draws.
+
+* *Equities (Stocks):* Modeled using historical real growth and volatility. A t-distribution represents fat-tailed boom and bust outcomes.
+* *Fixed Income (Bonds):* Treated as the stabilizing asset, growing at a constant rate derived from historical real 10-year Treasury yields.
+* *The Trade-off:* Increasing stock allocation raises potential wealth while widening uncertainty and downside exposure.
+
+#### *Data Sources*
+The model can estimate parameters from Vanguard 500 Index Fund Investor Shares (`VFINX`), the FRED Consumer Price Index (`CPIAUCSL`), and the FRED 10-Year Treasury yield (`GS10`). Normal dashboard startup uses bundled baseline parameters so interaction does not wait for external providers. Run `refresh_market_parameter_cache()` manually to refresh the local cache from those sources.
+
+---
+
+#### *The Math of Psychology: Risk Aversion ($\gamma$)*
+The dashboard evaluates final wealth using *Constant Relative Risk Aversion (CRRA)* utility:
+
+$$U(W) = \frac{W^{1-\gamma}}{1-\gamma}$$
+
+When $\gamma = 1$, the function transitions to $U(W) = \ln(W)$.
+
+#### *The Gamma Profile Scale*
+
+* *$\gamma = 0$:* Risk-agnostic; prioritizes the mathematical average.
+* *$\gamma = 1$:* Risk-tolerant; accepts large drawdowns for upside.
+* *$\gamma = 2$:* High capacity; prioritizes growth with some stability.
+* *$\gamma = 3$:* Average investor balance.
+* *$\gamma = 4$:* Lower capacity; wealth preservation is more important.
+* *$\gamma = 5-6$:* Fragile or near zero-loss situation.
+
+Portfolio {icon="fa-chart-line"}
+=======================================================================
+
+<style>
+  .form-group, .shiny-input-container { margin-bottom: 0 !important; padding-bottom: 0 !important; }
+  .irs { margin-top: -5px !important; }
+  .irs-bottom { height: 0 !important; }
+  .irs-grid { display: none; }
+  h4 { margin-top: 5px !important; margin-bottom: 5px !important; }
+  .checkbox { margin-top: 0 !important; margin-bottom: 0 !important; }
+</style>
+
+Row {data-height=200}
+-----------------------------------------------------------------------
+
+### *Global Parameters* {data-width=400}
+
+```{r ui_global_params}
+fluidRow(
+  column(
+    3,
+    div(
+      style = "text-align: right; padding-top: 5px; font-weight: bold; color: #2c3e50;",
+      "Time Horizon (Years):"
+    )
+  ),
+  column(
+    9,
+    sliderInput(
+      "time_horizon",
+      NULL,
+      min = 1,
+      max = 50,
+      value = 30,
+      step = 1,
+      width = "100%"
+    )
+  )
+)
+
+risk_slider <- sliderInput(
+  "risk_aversion",
+  NULL,
+  min = 0,
+  max = 6,
+  value = 3,
+  step = 0.25,
+  width = "100%"
+)
+risk_slider$children[[2]]$attribs$`data-grid-num` <- 6
+
+fluidRow(
+  style = "margin-top: 15px;",
+  column(
+    3,
+    div(
+      style = "text-align: right; padding-top: 5px; font-weight: bold; color: #2c3e50;",
+      "Risk Aversion (Gamma):",
+      div(
+        style = "font-size: 0.8em; color: #7f8c8d; font-weight: normal;",
+        renderText({
+          g <- input$risk_aversion
+          if (g < 1) return("[Risk Agnostic]")
+          if (g < 2) return("[Surplus / Play Money]")
+          if (g < 2.5) return("[High Capacity / Young]")
+          if (g <= 3) return("[Average Investor]")
+          if (g <= 4) return("[Low Capacity / Older]")
+          if (g <= 5) return("[Fragile Situation]")
+          "[Zero-Loss Mindset]"
+        })
+      )
+    )
+  ),
+  column(9, risk_slider)
+)
+```
+
+### *Strategy Configuration* {data-width=500}
+
+```{r ui_strategy_config}
+tagList(
+  div(
+    style = "margin-bottom: 0px;",
+    fluidRow(
+      column(
+        3,
+        h4(HTML(paste0(
+          "<span style='color:", color_wealth_strat1,
+          ";'>&#9632;</span> <b>Strategy #1</b>"
+        )))
+      ),
+      column(
+        2,
+        div(
+          style = "text-align: right; padding-top: 5px; font-weight: bold; color: #7f8c8d;",
+          renderText({ paste0("Bonds: ", 100 - input$strat1_stocks, "%") })
+        )
+      ),
+      column(
+        5,
+        sliderInput(
+          "strat1_stocks",
+          NULL,
+          min = 0,
+          max = 100,
+          value = 90,
+          post = "%",
+          width = "100%"
+        )
+      ),
+      column(
+        2,
+        div(
+          style = "text-align: left; padding-top: 5px; font-weight: bold; color: #2c3e50;",
+          renderText({ paste0("Stocks: ", input$strat1_stocks, "%") })
+        )
+      )
+    )
+  ),
+  div(
+    style = "margin-top: -5px; margin-bottom: -5px;",
+    checkboxInput("enable_strat2", "Compare Strategy #2", value = TRUE)
+  ),
+  renderUI({
+    opacity <- ifelse(input$enable_strat2, "1.0", "0.4")
+    pointer <- ifelse(input$enable_strat2, "auto", "none")
+
+    div(
+      style = paste0(
+        "opacity: ", opacity,
+        "; pointer-events: ", pointer,
+        "; transition: 0.3s; margin-top: 0px;"
+      ),
+      fluidRow(
+        column(
+          3,
+          h4(HTML(paste0(
+            "<span style='color:", color_wealth_strat2,
+            ";'>&#9632;</span> <b>Strategy #2</b>"
+          )))
+        ),
+        column(
+          2,
+          div(
+            style = "text-align: right; padding-top: 5px; font-weight: bold; color: #7f8c8d;",
+            renderText({ paste0("Bonds: ", 100 - input$strat2_stocks, "%") })
+          )
+        ),
+        column(
+          5,
+          sliderInput(
+            "strat2_stocks",
+            NULL,
+            min = 0,
+            max = 100,
+            value = 50,
+            post = "%",
+            width = "100%"
+          )
+        ),
+        column(
+          2,
+          div(
+            style = "text-align: left; padding-top: 5px; font-weight: bold; color: #2c3e50;",
+            renderText({ paste0("Stocks: ", input$strat2_stocks, "%") })
+          )
+        )
+      )
+    )
+  })
+)
+```
+
+Row {data-height=750}
+-----------------------------------------------------------------------
+
+### *Utility Trajectory & Decomposition* {data-width=600}
+
+```{r plot_utility_traj}
+shiny::fillCol(
+  flex = c(1, 1),
+  renderPlotly({
+    data <- simulation_data()
+    plot_utility_trajectory(data$traj)
+  }),
+  renderPlotly({
+    data <- simulation_data()
+    plot_utility_waterfall(data$stats)
+  })
+)
+```
+
+### *Projected Wealth Trajectory* {data-width=400}
+
+```{r plot_wealth_traj}
+div(
+  style = "text-align: right; z-index: 100; position: relative;",
+  radioButtons(
+    "wealth_scale",
+    NULL,
+    choices = c("Log" = "log10", "Linear" = "linear"),
+    selected = "log10",
+    inline = TRUE
+  )
+)
+
+renderPlotly({
+  data <- simulation_data()
+  scale_val <- if (is.null(input$wealth_scale)) "log10" else input$wealth_scale
+  plot_wealth_trajectory(data$traj, scale_type = scale_val)
+})
+```
+
+Goal Planner {icon="fa-bullseye"}
+=======================================================================
+
+Row {data-height=170}
+-----------------------------------------------------------------------
+
+### *Planner Inputs* {data-width=750}
+
+```{r allocation_controls}
+fluidRow(
+  column(
+    4,
+    sliderInput(
+      "goal_time_horizon",
+      "Time horizon",
+      min = 1,
+      max = 50,
+      value = 30,
+      step = 1,
+      post = " years",
+      width = "100%"
+    )
+  ),
+  column(
+    4,
+    sliderInput(
+      "goal_risk_aversion",
+      "Risk aversion (gamma)",
+      min = 0,
+      max = 6,
+      value = 3,
+      step = 0.25,
+      width = "100%"
+    )
+  ),
+  column(
+    4,
+    sliderInput(
+      "goal_multiplier",
+      "Target purchasing power",
+      min = 1,
+      max = 10,
+      value = 4,
+      step = 0.5,
+      post = "x",
+      width = "100%"
+    )
+  )
+)
+```
+
+### *View & Meaning* {data-width=250}
+
+```{r allocation_assumptions}
+radioButtons(
+  "distribution_scale",
+  "Wealth scale",
+  choices = c("Log" = "log", "Linear" = "linear"),
+  selected = "log",
+  inline = TRUE
+)
+
+radioButtons(
+  "distribution_range",
+  "Histogram range",
+  choices = c("Same scale" = "comparable", "Zoom selected" = "selected"),
+  selected = "comparable",
+  inline = TRUE
+)
+
+div(
+  class = "assumption-card",
+  strong("Wealth is inflation-adjusted."),
+  br(),
+  span("Same scale keeps every allocation directly comparable. Zoom selected reveals its distribution shape.")
+)
+```
+
+Row {data-height=430}
+-----------------------------------------------------------------------
+
+### *Probability of Reaching the Goal* {data-width=600}
+
+```{r goal_probability}
+renderPlotly({
+  summary_data <- allocation_analysis()
+  settings <- planner_settings()
+  selected_stocks <- selected_allocation()
+  selected_data <- summary_data %>% filter(Stocks == selected_stocks)
+  utility_best <- summary_data %>%
+    slice_max(`Risk-adjusted utility`, n = 1, with_ties = FALSE)
+  max_probability <- max(summary_data$`Goal probability`, na.rm = TRUE)
+  probability_ceiling <- if (max_probability <= 0) {
+    0.05
+  } else {
+    min(1, max(0.05, max_probability * 1.2))
+  }
+
+  plot_ly(
+    data = summary_data,
+    x = ~Stocks,
+    y = ~`Goal probability`,
+    type = "scatter",
+    mode = "lines+markers",
+    name = "Chance of reaching goal",
+    line = list(color = color_wealth_strat1, width = 3),
+    marker = list(size = 7, color = color_wealth_strat1),
+    text = ~paste0(
+      Stocks, "% stocks / ", Bonds, "% bonds<br>",
+      "Goal probability: ", percent(`Goal probability`, accuracy = 0.1), "<br>",
+      "Chance below start: ", percent(`Chance below start`, accuracy = 0.1), "<br>",
+      "Median wealth: ", dollar(`Median wealth`)
+    ),
+    hoverinfo = "text"
+  ) %>%
+    add_markers(
+      data = selected_data,
+      x = ~Stocks,
+      y = ~`Goal probability`,
+      name = "Selected allocation",
+      marker = list(
+        size = 15,
+        color = "rgba(255,255,255,0)",
+        line = list(color = "#111827", width = 4)
+      ),
+      text = ~paste0(
+        "Selected: ", Stocks, "% stocks<br>",
+        "Goal probability: ", percent(`Goal probability`, accuracy = 0.1)
+      ),
+      hoverinfo = "text"
+    ) %>%
+    add_markers(
+      data = utility_best,
+      x = ~Stocks,
+      y = ~`Goal probability`,
+      name = "Highest utility",
+      marker = list(size = 12, color = color_wealth_strat2, symbol = "diamond"),
+      text = ~paste0(
+        "Highest risk-adjusted utility<br>",
+        Stocks, "% stocks / ", Bonds, "% bonds<br>",
+        "Utility: ", round(`Risk-adjusted utility`, 1)
+      ),
+      hoverinfo = "text"
+    ) %>%
+    layout(
+      xaxis = list(title = "Stock allocation", ticksuffix = "%"),
+      yaxis = list(
+        title = "Probability of reaching goal",
+        tickformat = ".0%",
+        range = c(0, probability_ceiling)
+      ),
+      legend = list(orientation = "h", x = 0, y = -0.2),
+      margin = list(l = 90, r = 25, t = 25, b = 85),
+      hovermode = "closest"
+    ) %>%
+    config(displayModeBar = FALSE)
+})
+```
+
+### *Selected Outcome Distribution* {data-width=400}
+
+```{r terminal_distribution}
+renderPlotly({
+  distribution <- selected_distribution()
+  settings <- planner_settings()
+  stocks <- selected_allocation()
+  target_wealth <- 100 * settings$goal_multiplier
+  median_wealth <- median(distribution$Wealth)
+  goal_probability <- mean(distribution$Wealth >= target_wealth)
+  loss_probability <- mean(distribution$Wealth < 100)
+  range_mode <- if (is.null(input$distribution_range)) {
+    "comparable"
+  } else {
+    input$distribution_range
+  }
+
+  if (range_mode == "selected") {
+    display_lower <- unname(quantile(distribution$Wealth, 0.005))
+    display_upper <- unname(quantile(distribution$Wealth, 0.995))
+    range_caption <- "Central 99% of the selected allocation; use Same scale for direct comparison."
+  } else {
+    shared_range <- allocation_display_range()
+    display_lower <- shared_range[["lower"]]
+    display_upper <- shared_range[["upper"]]
+    range_caption <- "Same central-99% wealth range for every allocation, enabling direct comparison."
+  }
+
+  if (display_upper <= display_lower * 1.001) {
+    display_lower <- max(0.01, display_lower * 0.95)
+    display_upper <- display_upper * 1.05
+  }
+  display_distribution <- distribution %>%
+    filter(Wealth >= display_lower, Wealth <= display_upper)
+  target_in_view <- target_wealth >= display_lower && target_wealth <= display_upper
+  start_in_view <- 100 >= display_lower && 100 <= display_upper
+  goal_note <- if (target_in_view) {
+    paste0("Goal ", dollar(target_wealth), " shown in orange")
+  } else {
+    paste0("Goal ", dollar(target_wealth), " is outside the displayed central range")
+  }
+
+  p <- ggplot(display_distribution, aes(x = Wealth)) +
+    geom_histogram(
+      bins = 42,
+      fill = color_wealth_strat1,
+      color = "white",
+      alpha = 0.85
+    ) +
+    geom_vline(
+      xintercept = median_wealth,
+      color = color_wealth_strat2,
+      linewidth = 1
+    ) +
+    labs(
+      title = paste0(stocks, "% Stocks / ", 100 - stocks, "% Bonds"),
+      subtitle = paste0(
+        "Reach goal: ", percent(goal_probability, accuracy = 0.1),
+        " | Below start: ", percent(loss_probability, accuracy = 0.1),
+        "\n", goal_note
+      ),
+      x = "Terminal wealth (starting wealth = $100)",
+      y = "Simulated outcomes",
+      caption = range_caption
+    ) +
+    theme_minimal(base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold"),
+      plot.caption = element_text(size = 8, color = "#6b7280")
+    )
+
+  if (start_in_view) {
+    p <- p + geom_vline(
+      xintercept = 100,
+      color = "#e74c3c",
+      linewidth = 0.8,
+      linetype = "dashed"
+    )
+  }
+
+  if (target_in_view) {
+    p <- p + geom_vline(
+      xintercept = target_wealth,
+      color = "#f39c12",
+      linewidth = 1,
+      linetype = "dashed"
+    )
+  }
+
+  if (input$distribution_scale == "log") {
+    p <- p + scale_x_log10(
+      labels = label_dollar(),
+      limits = c(display_lower, display_upper)
+    )
+  } else {
+    p <- p + scale_x_continuous(
+      labels = label_dollar(),
+      limits = c(display_lower, display_upper)
+    )
+  }
+
+  ggplotly(p, tooltip = c("x", "count")) %>%
+    layout(
+      margin = list(l = 65, r = 20, t = 75, b = 60),
+      showlegend = FALSE
+    ) %>%
+    config(displayModeBar = FALSE)
+})
+```
+
+Row {data-height=430}
+-----------------------------------------------------------------------
+
+### *Interactive Allocation Decision Table*
+
+```{r allocation_table}
+renderDT({
+  data <- allocation_analysis()
+  default_row <- which.min(abs(data$Stocks - 60))
+
+  datatable(
+    data,
+    rownames = FALSE,
+    selection = list(mode = "single", selected = default_row),
+    callback = JS(
+      "table.on('click', 'tbody tr', function() {",
+      "  var row = table.row(this).data();",
+      "  if (row) {",
+      "    Shiny.setInputValue('selected_allocation_pct', parseFloat(row[0]), {priority: 'event'});",
+      "  }",
+      "});"
+    ),
+    options = list(
+      pageLength = 11,
+      lengthChange = FALSE,
+      searching = FALSE,
+      scrollX = TRUE,
+      order = list(list(0, "asc"))
+    ),
+    class = "stripe hover compact"
+  ) %>%
+    formatString(c("Stocks", "Bonds"), suffix = "%") %>%
+    formatPercentage(c("Goal probability", "Chance below start"), digits = 1) %>%
+    formatCurrency(
+      c(
+        "Expected wealth",
+        "Median wealth",
+        "Downside (2.5%)",
+        "Upside (97.5%)"
+      ),
+      currency = "$",
+      digits = 1
+    ) %>%
+    formatRound("Risk-adjusted utility", digits = 1)
+}, server = FALSE)
+```
+
+```{r reactive_orchestration, include=FALSE}
+portfolio_settings <- debounce(
+  reactive({
+    req(
+      input$time_horizon,
+      input$risk_aversion,
+      input$strat1_stocks
+    )
+    list(
+      time_horizon = input$time_horizon,
+      risk_aversion = input$risk_aversion,
+      strat1_stocks = input$strat1_stocks,
+      enable_strat2 = input$enable_strat2,
+      strat2_stocks = input$strat2_stocks
+    )
+  }),
+  millis = 300
+)
+
+simulation_data <- reactive({
+  settings <- portfolio_settings()
+
+  months <- settings$time_horizon * 12
+
+  matrix_1 <- generate_wealth_matrix(
+    w_stocks = settings$strat1_stocks / 100,
+    w_bonds = (100 - settings$strat1_stocks) / 100,
+    mu_s = market_params$mu_s,
+    sigma_s = market_params$sigma_s,
+    mu_b = market_params$mu_b,
+    df_shape = deg_free_shape,
+    df_lower = deg_free_lower,
+    df_upper = deg_free_upper,
+    df_horizon = df_horizon,
+    W0 = 100,
+    months = months
+  )
+
+  df_traj_1 <- calculate_trajectory_metrics(matrix_1)
+  util_1 <- calculate_utility_metrics(matrix_1, gamma = settings$risk_aversion)
+
+  df_strat1 <- df_traj_1 %>%
+    left_join(util_1$trajectory, by = "month") %>%
+    mutate(Strategy = "Strategy 1")
+  stats_1 <- tibble(Strategy = "Strategy 1", !!!util_1$final_stats)
+
+  if (settings$enable_strat2) {
+    req(settings$strat2_stocks)
+    matrix_2 <- generate_wealth_matrix(
+      w_stocks = settings$strat2_stocks / 100,
+      w_bonds = (100 - settings$strat2_stocks) / 100,
+      mu_s = market_params$mu_s,
+      sigma_s = market_params$sigma_s,
+      mu_b = market_params$mu_b,
+      df_shape = deg_free_shape,
+      df_lower = deg_free_lower,
+      df_upper = deg_free_upper,
+      df_horizon = df_horizon,
+      W0 = 100,
+      months = months
+    )
+
+    df_traj_2 <- calculate_trajectory_metrics(matrix_2)
+    util_2 <- calculate_utility_metrics(matrix_2, gamma = settings$risk_aversion)
+
+    df_strat2 <- df_traj_2 %>%
+      left_join(util_2$trajectory, by = "month") %>%
+      mutate(Strategy = "Strategy 2")
+    stats_2 <- tibble(Strategy = "Strategy 2", !!!util_2$final_stats)
+
+    df_comparison <- bind_rows(df_strat1, df_strat2)
+    df_stats_comparison <- bind_rows(stats_1, stats_2)
+  } else {
+    df_comparison <- df_strat1
+    df_stats_comparison <- stats_1
+  }
+
+  list(traj = df_comparison, stats = df_stats_comparison)
+})
+
+planner_settings <- debounce(
+  reactive({
+    req(input$goal_time_horizon, input$goal_risk_aversion, input$goal_multiplier)
+    list(
+      time_horizon = input$goal_time_horizon,
+      risk_aversion = input$goal_risk_aversion,
+      goal_multiplier = input$goal_multiplier
+    )
+  }),
+  millis = 250
+)
+
+allocation_surface <- reactive({
+  settings <- planner_settings()
+  build_terminal_surface(
+    stock_allocations = seq(0, 100, by = 5),
+    months = settings$time_horizon * 12
+  )
+})
+
+allocation_display_range <- reactive({
+  surface_wealth <- allocation_surface()$wealth
+  c(
+    lower = min(apply(surface_wealth, 1, quantile, probs = 0.005)),
+    upper = max(apply(surface_wealth, 1, quantile, probs = 0.995))
+  )
+})
+
+allocation_analysis <- reactive({
+  settings <- planner_settings()
+  summarize_terminal_surface(
+    surface = allocation_surface(),
+    gamma = settings$risk_aversion,
+    target_wealth = 100 * settings$goal_multiplier
+  )
+})
+
+selected_allocation <- reactive({
+  data <- allocation_analysis()
+  selected_stocks <- input$selected_allocation_pct
+
+  if (length(selected_stocks) == 1 && is.finite(selected_stocks)) {
+    return(data$Stocks[which.min(abs(data$Stocks - selected_stocks))])
+  }
+
+  data$Stocks[which.min(abs(data$Stocks - 60))]
+})
+
+selected_distribution <- reactive({
+  surface_distribution(allocation_surface(), selected_allocation())
+})
+
+```
