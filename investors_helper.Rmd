@@ -69,6 +69,10 @@ When $\gamma = 1$, the function transitions to $U(W) = \ln(W)$.
 * *$\gamma = 4$:* Lower capacity; wealth preservation is more important.
 * *$\gamma = 5-6$:* Fragile or near zero-loss situation.
 
+<div style="text-align: right; margin-bottom: 20px;">
+  <img src="www/PP_logo.png" alt="University Logo" style="max-width: 300px;">
+</div>
+
 Portfolio {icon="fa-chart-line"}
 =======================================================================
 
